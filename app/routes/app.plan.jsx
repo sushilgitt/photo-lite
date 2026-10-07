@@ -10,16 +10,16 @@ import {
 } from "../billing.server";
 import { getUsage } from "../usage.server";
 import { PLAN_TIERS } from "../planCatalog";
-import { Page, Layout, BlockStack, Banner } from "@shopify/polaris";
+import { Page, Layout, BlockStack, Banner, Badge } from "@shopify/polaris";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { Mosaic, PixelMeter } from "../components/Pixels";
+import { RingGauge, CheckGlyph } from "../components/Brand";
 
 // Human labels for the entitlement flags, shown as the current plan's inclusions.
 const FEATURE_LABELS = {
-  optimize: "WebP compression",
-  altText: "Alt Writer (AI alt text)",
-  autoOptimize: "Autopilot for new products",
-  pageSpeed: "Speed Lab reports",
+  optimize: "Image Optimizer (WebP)",
+  altText: "Alt Text AI",
+  autoOptimize: "Auto-Optimize new products",
+  pageSpeed: "Speed Report (Lighthouse)",
 };
 
 export const loader = async ({ request }) => {
@@ -98,83 +98,87 @@ export default function BillingPage() {
     <Page>
       <Layout>
         <Layout.Section>
-          <PageHeader icon={CreditCardIcon} eyebrow="Your account" title="Plan" subtitle="What you're on, how many credits you've used, and what's unlocked" />
+          <PageHeader icon={CreditCardIcon} eyebrow="Billing" title="Plans & usage" subtitle="Your current plan, this month's image usage and the features included" />
         </Layout.Section>
 
         {actionData?.cancelled && !hasActivePlan && (
           <Layout.Section>
-            <Banner title="Plan cancelled" tone="info">
-              Your subscription has ended. Pick a plan whenever you're ready for more credits.
+            <Banner title="Subscription cancelled" tone="info">
+              You're now on the Free plan. You can choose a paid plan again at any time.
             </Banner>
           </Layout.Section>
         )}
 
         <Layout.Section>
           <BlockStack gap="400">
-            <div className="pp-plan-card">
-              <Mosaic />
-              <div>
-                <p className="pp-plan-label">{hasActivePlan ? "Active plan" : "Current plan"}</p>
-                <p className="pp-plan-name">{planName}</p>
-                <p className="pp-plan-sub">{`${fmt(quota)} compression credits every month`}</p>
-                <div className="pp-actions">
-                  <a className="pp-btn pp-btn-white" href={pricingUrl} target="_top">
-                    {hasActivePlan ? "Switch plan" : "Pick a plan"}
+            <div className="pl-plan-top">
+              <div className="pl-card pl-plan-current">
+                <div>
+                  <Badge tone={hasActivePlan ? "success" : undefined}>{hasActivePlan ? "Active subscription" : "Current plan"}</Badge>
+                </div>
+                <div>
+                  <p className="pl-plan-name">{planName}</p>
+                  <p className="pl-plan-sub" style={{ marginTop: 8 }}>{`${fmt(quota)} images optimized per month`}</p>
+                </div>
+                <div className="pl-actions">
+                  <a className="pl-btn pl-btn-primary" href={pricingUrl} target="_top">
+                    {hasActivePlan ? "Change plan" : "Upgrade plan"}
                   </a>
                   {hasActivePlan && (
-                    <button type="button" className="pp-btn pp-btn-glass" disabled={isBusy} onClick={() => post("cancel")}>
-                      {isBusy ? "Cancelling…" : "Cancel"}
+                    <button type="button" className="pl-btn pl-btn-outline" disabled={isBusy} onClick={() => post("cancel")}>
+                      {isBusy ? "Cancelling…" : "Cancel subscription"}
                     </button>
                   )}
                 </div>
               </div>
-              <div className="pp-plan-usage">
-                <p><strong>{fmt(used)}</strong>{` of ${fmt(quota)} used`}</p>
-                <PixelMeter pct={pct} label={`${pct}% of monthly credits used`} />
-                <p>{`${pct}% used · resets on the 1st`}</p>
+
+              <div className="pl-dark pl-plan-usage">
+                <RingGauge pct={pct} size={112} stroke={10} label={`${pct}% of monthly images used`}>
+                  <span className="pl-ring-num" style={{ fontSize: 22 }}>{`${pct}%`}</span>
+                  <span className="pl-ring-unit">used</span>
+                </RingGauge>
+                <div>
+                  <p className="pl-quota-label">Usage this month</p>
+                  <p className="pl-plan-usage-big" style={{ marginTop: 8 }}>{`${fmt(used)} / ${fmt(quota)}`}</p>
+                  <p className="pl-plan-usage-note">{`${fmt(Math.max(0, quota - used))} images left. Your limit resets on the 1st of each month.`}</p>
+                </div>
               </div>
             </div>
 
-            <div className="pp-panel">
-              <p className="pp-panel-title">Unlocked on your plan</p>
-              <div className="pp-features">
+            <div className="pl-card">
+              <p className="pl-card-title">Included in {planName}</p>
+              <ul className="pl-checklist">
                 {Object.entries(FEATURE_LABELS).map(([k, label]) => {
                   const on = included.includes(k);
                   return (
-                    <div key={k} className={`pp-feature${on ? "" : " is-locked"}`}>
-                      <span className="pp-feature-mark" aria-hidden="true">{on ? "✓" : "·"}</span>
+                    <li key={k} className={on ? undefined : "is-locked"}>
+                      <span className="pl-check"><CheckGlyph /></span>
                       <span>{label}</span>
-                      {!on && <span className="pp-feature-tag">Locked</span>}
-                    </div>
+                      {!on && <span className="pl-lock-tag">Upgrade</span>}
+                    </li>
                   );
                 })}
+              </ul>
+            </div>
+
+            <div className="pl-card">
+              <p className="pl-card-title">All plans</p>
+              <p className="pl-card-sub">Monthly prices. Annual billing saves about 17%.</p>
+              <div className="pl-tier-strip">
+                {PLAN_TIERS.map((t, i) => (
+                  <div key={t.name} className={`pl-tier${i === currentIdx ? " is-current" : ""}`}>
+                    {i === currentIdx && <span className="pl-tier-you">Your plan</span>}
+                    <p className="pl-tier-name">{t.name}</p>
+                    <p className="pl-tier-price">{`$${t.price}`}<span>/mo</span></p>
+                    <p className="pl-tier-meta">{`${t.images} images / month`}</p>
+                  </div>
+                ))}
               </div>
+              <p className="pl-footnote">
+                Charges appear on your Shopify invoice. Plan changes are reflected here automatically.
+              </p>
             </div>
           </BlockStack>
-        </Layout.Section>
-
-        <Layout.Section variant="oneThird">
-          <div className="pp-panel">
-            <p className="pp-panel-title">Compare plans</p>
-            <ul className="pp-tiers">
-              {PLAN_TIERS.map((t, i) => (
-                <li key={t.name} className={i === currentIdx ? "is-current" : i < currentIdx ? "is-below" : ""}>
-                  <span className="pp-tier-pip" aria-hidden="true" />
-                  <div>
-                    <p className="pp-tier-name">
-                      {t.name}
-                      {i === currentIdx && <span className="pp-tier-you">Current</span>}
-                    </p>
-                    <p className="pp-tier-meta">{`${t.images} credits / mo · $${t.price}/mo`}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <p className="pp-side-note" style={{ marginTop: 14 }}>
-              Billing is handled by Shopify and appears on your Shopify invoice. Plan changes show up
-              here automatically.
-            </p>
-          </div>
         </Layout.Section>
       </Layout>
     </Page>

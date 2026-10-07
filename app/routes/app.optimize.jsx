@@ -8,7 +8,7 @@ import { getUsage, getRemaining } from '../usage.server';
 import { entitled } from '../plans.server';
 import db from '../db.server';
 import { mapLimit, headSizeMB, optimizeBatch } from '../optimize.server';
-import { PixelMeter } from '../components/Pixels';
+import { RingGauge, Meter } from '../components/Brand';
 import { fetchAllProducts, imageNodes, parseSummary, MAX_MEDIA_PER_PRODUCT } from '../catalog.server';
 import {
   Page,
@@ -194,7 +194,7 @@ export async function action({ request }) {
       try {
         const { plan } = await getBillingStateCached(admin, session.shop);
         if (!entitled(plan, 'autoOptimize')) {
-          return { success: false, settingUpdated: true, error: 'Autopilot is included with Growth and Pro.' };
+          return { success: false, settingUpdated: true, error: 'Auto-Optimize is available on the Growth and Pro plans.' };
         }
       } catch { /* if billing check fails, fall through and block enabling */
         return { success: false, settingUpdated: true, error: 'Could not verify your plan. Try again.' };
@@ -300,7 +300,7 @@ export default function ProductOptimization() {
 
     // Monthly quota hit — stop the whole queue and prompt to upgrade.
     if (data.quotaExceeded) {
-      setError('You have used this month’s compression credits. Upgrade your plan to keep going.');
+      setError('You have reached this month’s image limit. Upgrade your plan to keep optimizing.');
       queueRef.current = [];
       startNext();
       return;
@@ -403,15 +403,15 @@ export default function ProductOptimization() {
 
   const filterOptions = [
     { label: 'All', value: 'all' },
-    { label: 'To do', value: 'needs_optimization' },
-    { label: 'Done', value: 'optimized' },
-    { label: 'Missing alt', value: 'no_alt_text' },
+    { label: 'Not optimized', value: 'needs_optimization' },
+    { label: 'Optimized', value: 'optimized' },
+    { label: 'No alt text', value: 'no_alt_text' },
   ];
   const sortOptions = [
-    { label: 'Least compressed', value: 'score_asc' },
-    { label: 'Most compressed', value: 'score_desc' },
-    { label: 'Heaviest first', value: 'size_desc' },
-    { label: 'Most photos first', value: 'images_desc' },
+    { label: 'Least optimized', value: 'score_asc' },
+    { label: 'Most optimized', value: 'score_desc' },
+    { label: 'Largest file size', value: 'size_desc' },
+    { label: 'Most images', value: 'images_desc' },
   ];
 
   // Merge loader values with any live progress for a product.
@@ -444,109 +444,107 @@ export default function ProductOptimization() {
   const allSelected = selectedProducts.length === displayedProducts.length && displayedProducts.length > 0;
 
   const kpis = [
-    { label: 'Products in catalog', value: stats.total.toLocaleString() },
-    { label: 'Waiting to compress', value: stats.needsOptimization.toLocaleString(), tone: stats.needsOptimization > 0 ? 'warn' : undefined },
-    { label: 'Product photos', value: stats.totalImages.toLocaleString() },
-    { label: 'Weight removed', value: formatBytes(liveSavings), tone: 'good' },
+    { label: 'Products', value: stats.total.toLocaleString() },
+    { label: 'Not optimized', value: stats.needsOptimization.toLocaleString(), tone: stats.needsOptimization > 0 ? 'warn' : undefined },
+    { label: 'Images', value: stats.totalImages.toLocaleString() },
+    { label: 'Space saved', value: formatBytes(liveSavings), tone: 'good' },
   ];
 
   return (
     <Page>
       <Layout>
         <Layout.Section>
-          <PageHeader icon={ImageMagicIcon} eyebrow="Compress" title="Image compression" subtitle="Turn heavy product photos into lean WebP files, swapped in place on each product" />
+          <PageHeader icon={ImageMagicIcon} eyebrow="Image Optimizer" title="Optimize product images" subtitle="Convert photos to WebP and replace them on each product, keeping order and variant images" />
         </Layout.Section>
 
         {error && (
           <Layout.Section>
-            <Banner title="Error" tone="critical" onDismiss={() => setError(null)}>{error}</Banner>
+            <Banner title="Something went wrong" tone="critical" onDismiss={() => setError(null)}>{error}</Banner>
           </Layout.Section>
         )}
         {successMessage && (
           <Layout.Section>
-            <Banner title="Success" tone="success" onDismiss={() => setSuccessMessage(null)}>{successMessage}</Banner>
+            <Banner title="Done" tone="success" onDismiss={() => setSuccessMessage(null)}>{successMessage}</Banner>
           </Layout.Section>
         )}
 
-        {/* KPI strip */}
+        {/* Overview: monthly quota · auto-optimize · catalog stats */}
         <Layout.Section>
-          <div className="pp-kpis">
-            {kpis.map(k => (
-              <div key={k.label} className="pp-kpi">
-                <p className={`pp-kpi-value${k.tone ? ` pp-kpi-${k.tone}` : ''}`}>{k.value}</p>
-                <p className="pp-kpi-label">{k.label}</p>
+          <div className="pl-overview">
+            <div className="pl-dark pl-quota">
+              <RingGauge pct={usagePct} size={96} stroke={9} label={`${usagePct}% of monthly images used`}>
+                <span className="pl-ring-num" style={{ fontSize: 19 }}>{`${usagePct}%`}</span>
+              </RingGauge>
+              <div>
+                <p className="pl-quota-label">This month</p>
+                <p className="pl-quota-plan">{`${usedImages.toLocaleString()} / ${quota.toLocaleString()}`}</p>
+                <p className={`pl-quota-note${quotaReached ? ' is-alert' : ''}`}>
+                  {quotaReached
+                    ? 'Monthly limit reached. Upgrade to keep optimizing.'
+                    : `${plan?.name || 'Free'} plan · ${Math.max(0, quota - usedImages).toLocaleString()} images left`}
+                </p>
               </div>
-            ))}
-          </div>
-        </Layout.Section>
-
-        {/* Sidebar: usage + automation */}
-        <Layout.Section variant="oneThird">
-          <div className="pp-side-card">
-            <div className="pp-side-block">
-              <div className="pp-side-row">
-                <span className="pp-side-title">Credits this month</span>
-                <Badge tone={plan?.tier === 'free' ? undefined : 'success'}>{`${plan?.name || 'Free'} plan`}</Badge>
-              </div>
-              <p className="pp-side-big">
-                {usedImages.toLocaleString()}
-                <span>{` / ${quota.toLocaleString()}`}</span>
-              </p>
-              <PixelMeter pct={usagePct} light label={`${usagePct}% of monthly credits used`} />
-              {quotaReached && (
-                <Text variant="bodySm" as="p" tone="critical">
-                  You have used this month's credits. Upgrade for more.
-                </Text>
-              )}
             </div>
-            <div className="pp-side-block">
-              <div className="pp-side-row">
-                <span className="pp-side-title">Autopilot</span>
+
+            <div className="pl-card pl-auto">
+              <div className="pl-auto-head">
+                <p className="pl-card-title">Auto-Optimize</p>
                 {plan?.autoOptimizeAllowed
                   ? <Badge tone={autoOptimize ? 'success' : undefined}>{autoOptimize ? 'On' : 'Off'}</Badge>
                   : <Badge tone="attention">Growth+</Badge>}
               </div>
-              <p className="pp-side-note">Compress photos on every new product automatically, in the background.</p>
+              <p className="pl-card-sub" style={{ marginTop: 0 }}>Optimize photos on new products automatically in the background.</p>
               {plan?.autoOptimizeAllowed ? (
                 <Checkbox
-                  label="Run Autopilot on new products"
+                  label="Optimize new products automatically"
                   checked={autoOptimize}
                   onChange={handleToggleAutoOptimize}
                   disabled={settingsFetcher.state !== 'idle'}
                 />
               ) : (
-                <Text variant="bodySm" as="p" tone="subdued">Included with Growth and Pro.</Text>
+                <Text variant="bodySm" as="p" tone="subdued">Available on the Growth and Pro plans.</Text>
               )}
+            </div>
+
+            <div className="pl-statbar pl-mini-stats">
+              {kpis.map(k => (
+                <div key={k.label} className="pl-stat">
+                  <p className="pl-stat-label">{k.label}</p>
+                  <p className={`pl-stat-value${k.tone ? ` is-${k.tone}` : ''}`}>{k.value}</p>
+                </div>
+              ))}
             </div>
           </div>
         </Layout.Section>
 
         {/* Product list */}
         <Layout.Section>
-          <div className="pp-list">
-            <div className="pp-toolbar">
-              <div className="pp-tabs" role="tablist" aria-label="Filter products">
+          <div className="pl-list">
+            <div className="pl-toolbar">
+              <div className="pl-tabs" role="tablist" aria-label="Filter products">
                 {filterOptions.map(o => (
                   <button
                     key={o.value}
                     type="button"
                     role="tab"
                     aria-selected={filter === o.value}
-                    className={`pp-tab${filter === o.value ? ' is-active' : ''}`}
+                    className={`pl-tab${filter === o.value ? ' is-active' : ''}`}
                     onClick={() => handleFilterChange(o.value)}
                     disabled={isBusy}
                   >
                     {o.label}
-                    <span className="pp-tab-count">{filterCounts[o.value]}</span>
+                    <span className="pl-tab-count">{filterCounts[o.value]}</span>
                   </button>
                 ))}
               </div>
-              <Box width="210px">
-                <Select label="Sort by" labelInline options={sortOptions} value={sortBy} onChange={handleSortChange} disabled={isBusy} />
-              </Box>
+              <div className="pl-toolbar-sort">
+                <Box width="220px">
+                  <Select label="Sort" labelInline options={sortOptions} value={sortBy} onChange={handleSortChange} disabled={isBusy} />
+                </Box>
+              </div>
             </div>
 
-            <div className="pp-row pp-row-head">
+            <div className="pl-row pl-row-head">
               <Checkbox
                 label="Select all"
                 labelHidden
@@ -556,15 +554,15 @@ export default function ProductOptimization() {
               />
               <span />
               <span>Product</span>
-              <span>Progress</span>
-              <span>Removed</span>
-              <span>Done</span>
+              <span>Images optimized</span>
+              <span>Saved</span>
+              <span>Status</span>
               <span />
             </div>
 
             {displayedProducts.length === 0 ? (
-              <EmptyState heading="Nothing here yet" image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png">
-                <p>No products match this view. Try another tab.</p>
+              <EmptyState heading="No products in this view" image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png">
+                <p>Try a different tab to see more products.</p>
               </EmptyState>
             ) : (
               displayedProducts.map((raw) => {
@@ -573,7 +571,7 @@ export default function ProductOptimization() {
                 const selected = selectedProducts.includes(product.id);
                 const scoreTone = product.score >= 80 ? 'good' : product.score >= 60 ? 'warn' : 'bad';
                 return (
-                  <div key={product.id} className={`pp-row${selected ? ' is-selected' : ''}${isActive ? ' is-active' : ''}`}>
+                  <div key={product.id} className={`pl-row${selected ? ' is-selected' : ''}${isActive ? ' is-active' : ''}`}>
                     <Checkbox
                       label={`Select ${product.title}`}
                       labelHidden
@@ -582,31 +580,31 @@ export default function ProductOptimization() {
                       disabled={isBusy}
                     />
                     <Thumbnail source={product.featuredImageUrl || ImageMagicIcon} alt={product.title} size="small" />
-                    <div className="pp-row-main">
-                      <p className="pp-row-title">{product.title}</p>
-                      <p className="pp-row-meta">
-                        {`${product.status.toLowerCase()} · ${product.imageCount} images · alt text ${product.imagesWithAlt}/${product.imageCount}`}
-                        {isActive && <span className="pp-live">Compressing</span>}
+                    <div className="pl-row-main">
+                      <p className="pl-row-title">{product.title}</p>
+                      <p className="pl-row-meta">
+                        {`${product.status.charAt(0) + product.status.slice(1).toLowerCase()} · ${product.imageCount} ${product.imageCount === 1 ? 'image' : 'images'} · ${product.imagesWithAlt}/${product.imageCount} with alt text`}
+                        {isActive && <span className="pl-live">Optimizing</span>}
                       </p>
                     </div>
-                    <div className="pp-row-progress">
-                      <span>{`${product.optimizedImages}/${product.imageCount}`}</span>
-                      <div className="pp-bar"><i style={{ width: `${product.score}%` }} /></div>
+                    <div className="pl-row-progress">
+                      <span>{`${product.optimizedImages} of ${product.imageCount}`}</span>
+                      <Meter pct={product.score} label={`${product.score}% optimized`} />
                     </div>
-                    <div className="pp-row-saved">
+                    <div className="pl-row-saved">
                       <strong>{formatBytes(product.sizeSavedMB)}</strong>
-                      <span>{`of ${formatBytes(product.totalOriginalSizeMB)}`}</span>
+                      <span>{`from ${formatBytes(product.totalOriginalSizeMB)}`}</span>
                     </div>
-                    <div className={`pp-score pp-score-${scoreTone}`}>
+                    <span className={`pl-score pl-score-${scoreTone}`}>
                       {`${product.score}%`}
-                    </div>
-                    <div className="pp-row-action">
+                    </span>
+                    <div className="pl-row-action">
                       {product.needsOptimization ? (
                         <Button size="slim" variant="primary" onClick={() => handleOptimizeProduct(product.id)} loading={isActive} disabled={isBusy || quotaReached}>
-                          Compress
+                          Optimize
                         </Button>
                       ) : (
-                        <Badge tone="success">Compressed</Badge>
+                        <Badge tone="success">Optimized</Badge>
                       )}
                     </div>
                   </div>
@@ -618,12 +616,12 @@ export default function ProductOptimization() {
       </Layout>
 
       {selectedProducts.length > 0 && (
-        <div className="pp-bulkbar" role="region" aria-label="Bulk actions">
-          <span>{`${selectedProducts.length} product${selectedProducts.length === 1 ? '' : 's'} selected`}</span>
-          <div className="pp-bulkbar-actions">
-            <button type="button" className="pp-btn pp-btn-glass" onClick={() => setSelectedProducts([])} disabled={isBusy}>Clear</button>
-            <button type="button" className="pp-btn pp-btn-white" onClick={handleOptimizeSelected} disabled={isBusy || quotaReached}>
-              {isBusy ? 'Compressing…' : 'Compress selected'}
+        <div className="pl-bulkbar" role="region" aria-label="Bulk actions">
+          <span className="pl-bulkbar-count"><b>{selectedProducts.length}</b>{`product${selectedProducts.length === 1 ? '' : 's'} selected`}</span>
+          <div className="pl-bulkbar-actions">
+            <button type="button" className="pl-btn pl-btn-ghost" onClick={() => setSelectedProducts([])} disabled={isBusy}>Clear</button>
+            <button type="button" className="pl-btn pl-btn-bright" onClick={handleOptimizeSelected} disabled={isBusy || quotaReached}>
+              {isBusy ? 'Optimizing…' : 'Optimize selected'}
             </button>
           </div>
         </div>

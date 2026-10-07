@@ -167,7 +167,7 @@ export async function action({ request }) {
   const { admin, session } = await authenticate.admin(request);
   // Tier boundary: block alt-text generation for non-entitled (Free) plans.
   if (!(await altTextAllowed(admin, session.shop))) {
-    return { error: 'Alt Writer is included with Starter and above.' };
+    return { error: 'Alt Text AI is available on the Starter plan and above.' };
   }
   const formData = await request.formData();
   const actionType = formData.get('actionType');
@@ -467,7 +467,7 @@ export default function AltTextSuggestions() {
     const batch = genQueueRef.current.shift();
     if (!batch) {
       setGenProgress(null);
-      setSuccessMessage('AI suggestions generated successfully!');
+      setSuccessMessage('Alt text suggestions are ready to review.');
       setTimeout(() => setSuccessMessage(null), 3000);
       return;
     }
@@ -499,7 +499,7 @@ export default function AltTextSuggestions() {
       // (the truncated product title) looks identical to the original and the
       // failure is invisible.
       if (data.aiError) {
-        setError(`AI generation failed — showing fallback text (your product title), not a real AI description. Reason: ${data.aiError}. Check your AI provider API key/credits in the app settings.`);
+        setError(`AI generation failed — showing fallback text (your product title), not a real AI description. Reason: ${data.aiError}. Check the AI provider API key and billing.`);
       }
       setGenProgress(prev => prev ? { ...prev, done: Math.min(prev.total, prev.done + data.suggestions.length) } : prev);
     } else if (data.error) {
@@ -648,7 +648,7 @@ export default function AltTextSuggestions() {
     >
       <Layout>
         <Layout.Section>
-          <PageHeader icon={MagicIcon} eyebrow="Alt Writer" title="AI alt text" subtitle="AI reads each product's main photo and writes one caption for all of its images" />
+          <PageHeader icon={MagicIcon} eyebrow="Alt Text AI" title="Write alt text with AI" subtitle="AI describes each product's main image. Review the text, then apply it to all of the product's images" />
         </Layout.Section>
         {error && (
           <Layout.Section>
@@ -676,27 +676,34 @@ export default function AltTextSuggestions() {
         )}
 
         <Layout.Section>
+          <div className="pl-statbar">
+            <div className="pl-stat">
+              <p className="pl-stat-label">Products</p>
+              <p className="pl-stat-value">{productCount.toLocaleString()}</p>
+            </div>
+            <div className="pl-stat">
+              <p className="pl-stat-label">Images</p>
+              <p className="pl-stat-value">{totalImages.toLocaleString()}</p>
+            </div>
+            <div className="pl-stat">
+              <p className="pl-stat-label">Awaiting review</p>
+              <p className={`pl-stat-value${pendingCount > 0 ? ' is-warn' : ''}`}>{pendingCount.toLocaleString()}</p>
+            </div>
+            <div className="pl-stat">
+              <p className="pl-stat-label">Applied</p>
+              <p className="pl-stat-value is-good">{appliedCount.toLocaleString()}</p>
+            </div>
+          </div>
+        </Layout.Section>
+
+        <Layout.Section>
           <Card>
             <BlockStack gap="500">
-              <InlineStack align="space-between" blockAlign="center">
-                <InlineStack gap="800">
-                  <BlockStack gap="200">
-                    <Text variant="bodySm" as="p" tone="subdued">Products</Text>
-                    <Text variant="heading2xl" as="h2">{productCount}</Text>
-                  </BlockStack>
-                  <BlockStack gap="200">
-                    <Text variant="bodySm" as="p" tone="subdued">Photos</Text>
-                    <Text variant="heading2xl" as="h2">{totalImages}</Text>
-                  </BlockStack>
-                  <BlockStack gap="200">
-                    <Text variant="bodySm" as="p" tone="subdued">To review</Text>
-                    <Text variant="heading2xl" as="h2">{pendingCount}</Text>
-                  </BlockStack>
-                  <BlockStack gap="200">
-                    <Text variant="bodySm" as="p" tone="subdued">Applied</Text>
-                    <Text variant="heading2xl" as="h2" tone="success">{appliedCount}</Text>
-                  </BlockStack>
-                </InlineStack>
+              <InlineStack align="space-between" blockAlign="center" gap="400">
+                <BlockStack gap="100">
+                  <Text variant="headingMd" as="h2">Product alt text</Text>
+                  <Text variant="bodySm" as="p" tone="subdued">Generate for all products, or select specific ones first.</Text>
+                </BlockStack>
                 <InlineStack gap="300" blockAlign="end">
                   <Box minWidth="220px">
                     <Select
@@ -706,10 +713,10 @@ export default function AltTextSuggestions() {
                       onChange={setAiProvider}
                     />
                   </Box>
-                  <Button onClick={generateSuggestions} loading={isGenerating} disabled={isGenerating}>
+                  <Button variant={selectedImages.length > 0 ? undefined : 'primary'} onClick={generateSuggestions} loading={isGenerating} disabled={isGenerating}>
                     {isGenerating
-                      ? `Writing ${genProgress.done}/${genProgress.total}…`
-                      : 'Write suggestions'}
+                      ? `Generating ${genProgress.done}/${genProgress.total}…`
+                      : 'Generate alt text'}
                   </Button>
                   {selectedImages.length > 0 && (
                     <Button
@@ -740,7 +747,7 @@ export default function AltTextSuggestions() {
               <Divider />
 
               <Checkbox
-                label="Select everything to review"
+                label="Select all products to review"
                 checked={selectedImages.length === images.filter(img => img.status === 'pending').length && images.filter(img => img.status === 'pending').length > 0}
                 onChange={handleSelectAll}
               />
@@ -749,7 +756,7 @@ export default function AltTextSuggestions() {
                 {images.length === 0 ? (
                   <Box padding="1600">
                     <BlockStack gap="400" inlineAlign="center">
-                      <Text variant="headingMd" as="h3" alignment="center">No products with photos yet</Text>
+                      <Text variant="headingMd" as="h3" alignment="center">No products with images yet</Text>
                       <Text variant="bodyMd" as="p" tone="subdued" alignment="center">
                         Add products with images to get started.
                       </Text>
@@ -775,14 +782,14 @@ export default function AltTextSuggestions() {
                             <InlineStack align="space-between">
                               <Box width="65%">
                                 <BlockStack gap="200">
-                                  <Text variant="bodySm" as="p" fontWeight="semibold">Alt text today</Text>
+                                  <Text variant="bodySm" as="p" fontWeight="semibold">Current alt text</Text>
                                   <Text variant="bodyMd" as="p" tone={image.currentAlt ? undefined : 'subdued'}>
                                     {image.currentAlt || 'No alt text'}
                                   </Text>
                                 </BlockStack>
                               </Box>
                               <BlockStack gap="200" inlineAlign="end">
-                                <Text variant="bodySm" as="p" tone="subdued">Search score</Text>
+                                <Text variant="bodySm" as="p" tone="subdued">SEO score</Text>
                                 <Badge tone={getSeoScoreStatus(image.seoScore)}>{image.seoScore}%</Badge>
                               </BlockStack>
                             </InlineStack>
@@ -791,7 +798,7 @@ export default function AltTextSuggestions() {
 
                             <BlockStack gap="300">
                               <InlineStack gap="200" blockAlign="center">
-                                <Text variant="bodySm" as="p" fontWeight="semibold">Suggested by Alt Writer</Text>
+                                <Text variant="bodySm" as="p" fontWeight="semibold">AI suggestion</Text>
                                 <Text variant="bodySm" as="span" tone="subdued">(applied to all {image.imageCount} images)</Text>
                                 {image.status === 'applied' && <Badge tone="success">Applied</Badge>}
                               </InlineStack>
@@ -801,7 +808,7 @@ export default function AltTextSuggestions() {
                                 disabled={image.status === 'applied'}
                                 multiline={2}
                                 autoComplete="off"
-                                placeholder="Press 'Write suggestions' and Alt Writer will describe this photo…"
+                                placeholder="Click 'Generate alt text' to get an AI description of this image…"
                               />
                             </BlockStack>
 

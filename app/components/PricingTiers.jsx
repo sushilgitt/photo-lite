@@ -1,5 +1,5 @@
 import { PLAN_TIERS } from "../planCatalog";
-import { BrandMark, Mosaic } from "./Pixels";
+import { LogoMark, CheckGlyph } from "./Brand";
 
 // Plan comparison used by both the standalone pricing page and the in-app
 // pricing wall. Presentational only: every plan CTA is a real top-frame link
@@ -12,44 +12,43 @@ import { BrandMark, Mosaic } from "./Pixels";
 // charged is set on the Partner Dashboard plans, so keep the two in sync.
 export default function PricingTiers({ pricingUrl }) {
   return (
-    <div className="pp-pricing">
-      <Mosaic />
-      <header className="pp-pricing-head">
-        <p className="pp-kicker"><BrandMark />PHOTO LITE</p>
+    <div className="pl-pricing">
+      <header className="pl-dark pl-pricing-band">
+        <span className="pl-chip pl-chip--dark"><LogoMark size={18} />Photo Lite plans</span>
         <h1>
-          Pick the plan that fits <em>your catalog.</em>
+          Faster product pages, <span className="pl-accent">at any size.</span>
         </h1>
         <p>
-          Lighter product photos, descriptive alt text and quicker pages. Start on Free and move up
-          whenever you need more credits.
+          Optimize photos, write alt text with AI and measure the speed you gain. Start free and
+          upgrade only when your catalog needs it.
         </p>
       </header>
 
-      <div className="pp-pricing-grid">
+      <div className="pl-pricing-grid">
         {PLAN_TIERS.map((tier) => (
-          <div key={tier.name} className={`pp-price-card${tier.popular ? " is-popular" : ""}`}>
-            {tier.popular && <span className="pp-price-flag">Best value</span>}
-            <p className="pp-price-name">{tier.name}</p>
-            <p className="pp-price-tag">{tier.tagline}</p>
-            <p className="pp-price-amount">
-              {`$${tier.price}`}<span>/month</span>
+          <div key={tier.name} className={`pl-price-card${tier.popular ? " is-popular" : ""}`}>
+            {tier.popular && <span className="pl-price-flag">MOST POPULAR</span>}
+            <p className="pl-price-name">{tier.name}</p>
+            <p className="pl-price-tag">{tier.tagline}</p>
+            <p className="pl-price-amount">
+              {`$${tier.price}`}<span>per month</span>
             </p>
-            <p className="pp-price-annual">
-              {tier.price === 0 ? "No card needed" : `$${tier.priceAnnual} billed yearly · 2 months on us`}
+            <p className="pl-price-annual">
+              {tier.price === 0 ? "Free forever, no card required" : `Or $${tier.priceAnnual}/year and save ~17%`}
             </p>
-            <a href={pricingUrl} target="_top" className={`pp-btn ${tier.popular ? "pp-btn-white" : "pp-btn-primary"} pp-price-cta`}>
-              {tier.price === 0 ? "Start on Free" : `Get ${tier.name}`}
+            <a href={pricingUrl} target="_top" className={`pl-btn ${tier.popular ? "pl-btn-primary" : "pl-btn-outline"} pl-price-cta`}>
+              {tier.price === 0 ? "Start free" : `Choose ${tier.name}`}
             </a>
-            <ul className="pp-price-features">
+            <ul className="pl-price-features">
               {tier.features.map((f) => (
-                <li key={f}>{f}</li>
+                <li key={f}><CheckGlyph />{f}</li>
               ))}
             </ul>
           </div>
         ))}
       </div>
 
-      <p className="pp-pricing-foot">Charged through your Shopify bill · switch or cancel any time</p>
+      <p className="pl-pricing-foot">Billed securely through Shopify. Change or cancel your plan at any time.</p>
     </div>
   );
 }

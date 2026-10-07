@@ -280,7 +280,7 @@ export async function action({ request }) {
   // Tier boundary: block report runs for non-entitled plans (defends the action
   // even if the UI were bypassed).
   if (!(await pageSpeedAllowed(admin, session.shop))) {
-    return { error: 'Speed Lab is included with Growth and Pro.' };
+    return { error: 'Speed Report is available on the Growth and Pro plans.' };
   }
   const formData = await request.formData();
   const actionType = formData.get('actionType');
@@ -427,7 +427,7 @@ export default function PageSpeedImpactReports() {
     >
       <Layout>
         <Layout.Section>
-          <PageHeader icon={GaugeIcon} eyebrow="Speed Lab" title="Storefront speed" subtitle="Real weight removed per page, plus on-demand Lighthouse tests" />
+          <PageHeader icon={GaugeIcon} eyebrow="Speed Report" title="Page speed & savings" subtitle="Measured file-size savings per product page, plus live Google Lighthouse tests" />
         </Layout.Section>
         {loadError && (
           <Layout.Section>
@@ -445,19 +445,27 @@ export default function PageSpeedImpactReports() {
           </Layout.Section>
         )}
 
-        {/* Stats Banner — measured optimization results */}
+        {/* Measured optimization results */}
         <Layout.Section>
-          <Banner tone="info">
-            <BlockStack gap="200">
-              <Text variant="bodyMd" as="p">
-                <strong>{optimizedProducts}</strong> out of <strong>{totalProducts}</strong> product pages have been optimized.
-              </Text>
-              <Text variant="bodyMd" as="p">
-                Measured savings: <strong>{totalSavedMB.toFixed(1)} MB</strong> across <strong>{totalImagesOptimized}</strong> images
-                ({avgCompression.toFixed(0)}% average compression). These figures come from the actual file sizes before and after compression.
-              </Text>
-            </BlockStack>
-          </Banner>
+          <div className="pl-statbar">
+            <div className="pl-stat">
+              <p className="pl-stat-label">Pages optimized</p>
+              <p className="pl-stat-value">{`${optimizedProducts}`}<span style={{ fontSize: 14, fontWeight: 500, color: 'var(--pl-muted)' }}>{` / ${totalProducts}`}</span></p>
+            </div>
+            <div className="pl-stat">
+              <p className="pl-stat-label">Space saved</p>
+              <p className="pl-stat-value is-good">{`${totalSavedMB.toFixed(1)} MB`}</p>
+            </div>
+            <div className="pl-stat">
+              <p className="pl-stat-label">Images optimized</p>
+              <p className="pl-stat-value">{totalImagesOptimized.toLocaleString()}</p>
+            </div>
+            <div className="pl-stat">
+              <p className="pl-stat-label">Average reduction</p>
+              <p className="pl-stat-value">{`${avgCompression.toFixed(0)}%`}</p>
+              <p className="pl-stat-hint">Measured from real file sizes</p>
+            </div>
+          </div>
         </Layout.Section>
 
         {/* Live PageSpeed Test */}
@@ -485,7 +493,7 @@ export default function PageSpeedImpactReports() {
                     loading={isRunningAnalysis}
                     disabled={isRunningAnalysis || !selectedPage}
                   >
-                    {isRunningAnalysis ? 'Running test…' : 'Start test'}
+                    {isRunningAnalysis ? 'Testing…' : 'Run Lighthouse test'}
                   </Button>
                 </InlineStack>
               ) : (
@@ -533,7 +541,7 @@ export default function PageSpeedImpactReports() {
             <Card>
               <BlockStack gap="400">
                 <InlineStack align="space-between" blockAlign="center">
-                  <Text variant="headingMd" as="h3">Weight removed, page by page</Text>
+                  <Text variant="headingMd" as="h3">Savings by product page</Text>
                   {pages.length > 20 && (
                     <Badge tone="info">Showing first 20 of {pages.length} pages</Badge>
                   )}
@@ -555,7 +563,7 @@ export default function PageSpeedImpactReports() {
         <Layout.Section>
           <Card>
             <BlockStack gap="400">
-              <Text variant="headingMd" as="h3">What to do next</Text>
+              <Text variant="headingMd" as="h3">Recommendations</Text>
               {insights.map((insight) => (
                 <Banner key={insight.id} tone={getInsightTone(insight.type)}>
                   <BlockStack gap="200">
