@@ -471,9 +471,9 @@ export default function ProductOptimization() {
         {/* Overview: monthly quota · auto-optimize · catalog stats */}
         <Layout.Section>
           <div className="pl-overview">
-            <div className="pl-dark pl-quota">
+            <div className="pl-soft pl-quota">
               <RingGauge pct={usagePct} size={96} stroke={9} label={`${usagePct}% of monthly images used`}>
-                <span className="pl-ring-num" style={{ fontSize: 19 }}>{`${usagePct}%`}</span>
+                <span className="pl-ring-num" style={{ fontSize: 18 }}>{`${usagePct}%`}</span>
               </RingGauge>
               <div>
                 <p className="pl-quota-label">This month</p>

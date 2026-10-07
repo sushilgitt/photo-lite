@@ -132,7 +132,7 @@ export default function BillingPage() {
                 </div>
               </div>
 
-              <div className="pl-dark pl-plan-usage">
+              <div className="pl-soft pl-plan-usage">
                 <RingGauge pct={pct} size={112} stroke={10} label={`${pct}% of monthly images used`}>
                   <span className="pl-ring-num" style={{ fontSize: 22 }}>{`${pct}%`}</span>
                   <span className="pl-ring-unit">used</span>

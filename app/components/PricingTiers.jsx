@@ -13,8 +13,8 @@ import { LogoMark, CheckGlyph } from "./Brand";
 export default function PricingTiers({ pricingUrl }) {
   return (
     <div className="pl-pricing">
-      <header className="pl-dark pl-pricing-band">
-        <span className="pl-chip pl-chip--dark"><LogoMark size={18} />Photo Lite plans</span>
+      <header className="pl-soft pl-pricing-band">
+        <span className="pl-chip"><LogoMark size={18} />Photo Lite plans</span>
         <h1>
           Faster product pages, <span className="pl-accent">at any size.</span>
         </h1>

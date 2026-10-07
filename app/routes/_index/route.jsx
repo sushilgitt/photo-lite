@@ -34,9 +34,9 @@ export default function App() {
       <div className={styles.shell}>
         <header className={styles.brand}>
           <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
-            <rect width="24" height="24" rx="7" fill="#0F766E" />
+            <rect width="24" height="24" rx="7" fill="#22C55E" />
             <circle cx="11.5" cy="13" r="5.25" fill="none" stroke="#fff" strokeWidth="2.2" />
-            <circle cx="18" cy="6" r="2.1" fill="#F59E0B" />
+            <circle cx="18" cy="6" r="2.1" fill="#fff" />
           </svg>
           Photo Lite
         </header>

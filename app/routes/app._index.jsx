@@ -114,10 +114,10 @@ export default function Index() {
 
   return (
     <Page>
-      <section className="pl-dark pl-hero">
+      <section className="pl-soft pl-hero">
         <div className="pl-hero-top">
           <div>
-            <span className="pl-chip pl-chip--dark"><LogoMark size={18} />Photo Lite</span>
+            <span className="pl-chip"><LogoMark size={18} />Photo Lite</span>
             <h1>
               Lighter photos. <span className="pl-accent">Faster store.</span>
             </h1>
@@ -126,10 +126,10 @@ export default function Index() {
               Shopify admin.
             </p>
             <div className="pl-actions">
-              <button type="button" className="pl-btn pl-btn-bright" onClick={() => navigate("/app/optimize")}>
+              <button type="button" className="pl-btn pl-btn-primary" onClick={() => navigate("/app/optimize")}>
                 Optimize images
               </button>
-              <button type="button" className="pl-btn pl-btn-ghost" onClick={() => navigate("/app/plan")}>
+              <button type="button" className="pl-btn pl-btn-outline" onClick={() => navigate("/app/plan")}>
                 Plans &amp; usage
               </button>
             </div>
