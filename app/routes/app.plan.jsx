@@ -25,15 +25,13 @@ const FEATURE_LABELS = {
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
 
-  let state = { hasActivePlan: false, plan: null, appHandle: undefined };
-  try {
-    state = await getBillingState(admin, session.shop);
-  } catch (e) {
-    if (e instanceof Response) throw e;
-  }
-
-  let usage = { imagesUsed: 0 };
-  try { usage = await getUsage(session.shop); } catch { /* table not ready */ }
+  const [state, usage] = await Promise.all([
+    getBillingState(admin, session.shop).catch((e) => {
+      if (e instanceof Response) throw e;
+      return { hasActivePlan: false, plan: null, appHandle: undefined };
+    }),
+    getUsage(session.shop).catch(() => ({ imagesUsed: 0 })), // table not ready
+  ]);
 
   const plan = state.plan || { name: "Free", tier: "free", monthlyImages: 100, features: {} };
   const included = Object.keys(FEATURE_LABELS).filter((k) => plan.features?.[k]);

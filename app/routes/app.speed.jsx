@@ -35,10 +35,10 @@ import {
 } from '@shopify/polaris';
 
 // Budget (Shopify caps a query at 1,000 requested points): per product ≈
-// 1 + summary 1 = 2, × 100 products ≈ 202.
+// 1 + summary 1 = 2, × 250 products ≈ 502.
 const PRODUCTS_QUERY = `#graphql
   query SpeedLabProducts($cursor: String) {
-    products(first: 100, after: $cursor) {
+    products(first: 250, after: $cursor) {
       pageInfo { hasNextPage endCursor }
       nodes {
         id

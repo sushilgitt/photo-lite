@@ -20,20 +20,20 @@ import { LogoMark, RingGauge } from "../components/Brand";
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
 
-  let plan = null;
-  try {
-    plan = (await getBillingStateCached(admin, session.shop)).plan;
-  } catch (e) {
-    if (e instanceof Response) throw e; // let re-auth propagate
-  }
-
-  let usage = { imagesUsed: 0 };
-  let autoOptimize = false;
-  try {
-    usage = await getUsage(session.shop);
-    const settings = await db.shopSettings.findUnique({ where: { shop: session.shop } });
-    autoOptimize = settings?.autoOptimize ?? false;
-  } catch { /* usage/settings tables not ready — defaults */ }
+  // Independent lookups, run concurrently. Usage/settings fall back to defaults
+  // if their tables aren't ready.
+  const [plan, usage, autoOptimize] = await Promise.all([
+    getBillingStateCached(admin, session.shop)
+      .then((state) => state.plan)
+      .catch((e) => {
+        if (e instanceof Response) throw e; // let re-auth propagate
+        return null;
+      }),
+    getUsage(session.shop).catch(() => ({ imagesUsed: 0 })),
+    db.shopSettings.findUnique({ where: { shop: session.shop } })
+      .then((settings) => settings?.autoOptimize ?? false)
+      .catch(() => false),
+  ]);
 
   return {
     plan: {

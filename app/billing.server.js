@@ -81,20 +81,31 @@ export async function getBillingState(admin, shop = null) {
 const billingCache = new Map(); // shop -> { state, expires }
 const BILLING_TTL_MS = 120 * 1000;
 
+// The /app layout loader and the child route's loader run in parallel on every
+// navigation and both need the billing state. Concurrent callers for the same
+// shop share one in-flight lookup instead of each paying a Shopify roundtrip.
+const billingInflight = new Map(); // shop -> Promise<state>
+
 export async function getBillingStateCached(admin, shop) {
-  if (shop) {
-    const hit = billingCache.get(shop);
-    if (hit && hit.expires > Date.now()) return hit.state;
-  }
-  const state = await getBillingState(admin, shop);
-  if (shop) {
-    if (state.hasActivePlan) {
-      billingCache.set(shop, { state, expires: Date.now() + BILLING_TTL_MS });
-    } else {
-      billingCache.delete(shop);
-    }
-  }
-  return state;
+  if (!shop) return getBillingState(admin, shop);
+  const hit = billingCache.get(shop);
+  if (hit && hit.expires > Date.now()) return hit.state;
+
+  const pending = billingInflight.get(shop);
+  if (pending) return pending;
+
+  const lookup = getBillingState(admin, shop)
+    .then((state) => {
+      if (state.hasActivePlan) {
+        billingCache.set(shop, { state, expires: Date.now() + BILLING_TTL_MS });
+      } else {
+        billingCache.delete(shop);
+      }
+      return state;
+    })
+    .finally(() => billingInflight.delete(shop));
+  billingInflight.set(shop, lookup);
+  return lookup;
 }
 
 // Builds the Shopify-hosted managed-pricing page URL where merchants can

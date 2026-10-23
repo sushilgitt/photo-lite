@@ -7,7 +7,7 @@ import { getBillingStateCached } from '../billing.server';
 import { getUsage, getRemaining } from '../usage.server';
 import { entitled } from '../plans.server';
 import db from '../db.server';
-import { mapLimit, headSizeMB, optimizeBatch } from '../optimize.server';
+import { optimizeBatch } from '../optimize.server';
 import { RingGauge, Meter } from '../components/Brand';
 import { fetchAllProducts, imageNodes, parseSummary, MAX_MEDIA_PER_PRODUCT } from '../catalog.server';
 import {
@@ -29,10 +29,12 @@ import {
 /* -------------------------------------------------------------------------- */
 
 // Budget (Shopify caps a query at 1,000 requested points): per product ≈
-// 1 + featuredMedia 3 + media(2 + 40×2) + summary 1 = 87, × 10 products ≈ 875.
+// 1 + featuredMedia 3 + media(2 + 40×3) + summary 1 = 127, × 7 products ≈ 890.
+// `originalSource.fileSize` gives each image's size in the same query, so the
+// loader no longer HEAD-requests every unoptimized image on the CDN.
 const PRODUCTS_QUERY = `#graphql
   query OptimizerProducts($cursor: String) {
-    products(first: 10, after: $cursor) {
+    products(first: 7, after: $cursor) {
       pageInfo { hasNextPage endCursor }
       nodes {
         id
@@ -41,7 +43,7 @@ const PRODUCTS_QUERY = `#graphql
         status
         featuredMedia { preview { image { url } } }
         media(first: ${MAX_MEDIA_PER_PRODUCT}) {
-          nodes { ... on MediaImage { id alt image { url } } }
+          nodes { ... on MediaImage { id alt image { url } originalSource { fileSize } } }
         }
         summary: metafield(namespace: "image_optimization", key: "optimization_summary") { value }
       }
@@ -60,18 +62,19 @@ export async function loader({ request }) {
   const sortBy = url.searchParams.get('sortBy') || 'score_asc';
 
   // Plan, usage and per-shop settings drive the quota meter + auto-optimize UI.
-  let plan = null;
-  try {
-    const state = await getBillingStateCached(admin, session.shop);
-    plan = state.plan;
-  } catch { /* fall through to Free defaults below */ }
-  let usage = { period: '', imagesUsed: 0 };
-  let autoOptimize = false;
-  try {
-    usage = await getUsage(session.shop);
-    const settings = await db.shopSettings.findUnique({ where: { shop: session.shop } });
-    autoOptimize = settings?.autoOptimize ?? false;
-  } catch { /* usage/settings tables not ready yet — default to zero/off */ }
+  // They're independent of each other and of the (slow) catalog fetch, so all
+  // of them run concurrently.
+  const catalogPromise = fetchAllProducts(admin, PRODUCTS_QUERY);
+  catalogPromise.catch(() => {}); // awaited below; avoid an unhandled rejection meanwhile
+  const [plan, usage, autoOptimize] = await Promise.all([
+    getBillingStateCached(admin, session.shop)
+      .then((state) => state.plan)
+      .catch(() => null), // fall through to Free defaults below
+    getUsage(session.shop).catch(() => ({ period: '', imagesUsed: 0 })),
+    db.shopSettings.findUnique({ where: { shop: session.shop } })
+      .then((settings) => settings?.autoOptimize ?? false)
+      .catch(() => false), // settings table not ready yet — default to off
+  ]);
   const planInfo = {
     tier: plan?.tier || 'free',
     name: plan?.name || 'Free',
@@ -80,24 +83,16 @@ export async function loader({ request }) {
   };
 
   try {
-    const { products } = await fetchAllProducts(admin, PRODUCTS_QUERY);
+    const { products } = await catalogPromise;
 
-    // Build a flat list of images we need to measure (only for products that
-    // have never been optimized — optimized products carry totals in their
-    // summary metafield). Measured with bounded concurrency + IPv4 so the page
-    // loads in a few seconds instead of stalling on per-image connect timeouts.
-    const measureTasks = [];
+    // Size of products that have never been optimized (optimized products
+    // carry totals in their summary metafield), from Shopify's stored file size.
+    const measuredByProduct = {};
     for (const product of products) {
       if (parseSummary(product)) continue;
-      for (const img of imageNodes(product)) {
-        measureTasks.push({ productId: product.id, url: img.image.url });
-      }
+      measuredByProduct[product.id] = imageNodes(product)
+        .reduce((sum, img) => sum + (img.originalSource?.fileSize || 0) / (1024 * 1024), 0);
     }
-    const measuredSizes = await mapLimit(measureTasks, 24, t => headSizeMB(t.url));
-    const measuredByProduct = {};
-    measureTasks.forEach((t, i) => {
-      measuredByProduct[t.productId] = (measuredByProduct[t.productId] || 0) + (measuredSizes[i] || 0);
-    });
 
     const processedProducts = products.map((product) => {
       const images = imageNodes(product);
