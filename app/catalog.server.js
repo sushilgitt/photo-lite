@@ -37,6 +37,37 @@ export async function fetchAllProducts(admin, query, { maxPages = DEFAULT_MAX_PA
   return { products, truncated: Boolean(cursor) };
 }
 
+// Short-lived per-shop cache of whole-catalog fetches, so moving between pages
+// (or revisiting one) doesn't re-page the entire catalog every time. Keyed by
+// shop + query, since each page selects different fields. Concurrent callers
+// share one in-flight fetch. Anything in the app that changes products calls
+// invalidateCatalog(shop); edits made elsewhere in Shopify show within the TTL.
+const CATALOG_TTL_MS = 60 * 1000;
+const catalogCache = new Map(); // key -> { promise, expires }
+
+export function fetchAllProductsCached(admin, shop, query, opts) {
+  const key = `${shop}\n${query}`;
+  const now = Date.now();
+  const hit = catalogCache.get(key);
+  if (hit && hit.expires > now) return hit.promise;
+
+  for (const [k, v] of catalogCache) if (v.expires <= now) catalogCache.delete(k);
+
+  const promise = fetchAllProducts(admin, query, opts);
+  const entry = { promise, expires: now + CATALOG_TTL_MS };
+  catalogCache.set(key, entry);
+  // Never cache a failure — the next request retries.
+  promise.catch(() => {
+    if (catalogCache.get(key) === entry) catalogCache.delete(key);
+  });
+  return promise;
+}
+
+export function invalidateCatalog(shop) {
+  const prefix = `${shop}\n`;
+  for (const k of catalogCache.keys()) if (k.startsWith(prefix)) catalogCache.delete(k);
+}
+
 // MediaImage nodes from a `media { nodes { ... on MediaImage { … } } }`
 // selection; videos / 3D models come back as empty objects and are dropped.
 export function imageNodes(product) {

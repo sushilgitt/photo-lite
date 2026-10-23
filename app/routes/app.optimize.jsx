@@ -9,7 +9,8 @@ import { entitled } from '../plans.server';
 import db from '../db.server';
 import { optimizeBatch } from '../optimize.server';
 import { RingGauge, Meter } from '../components/Brand';
-import { fetchAllProducts, imageNodes, parseSummary, MAX_MEDIA_PER_PRODUCT } from '../catalog.server';
+import Deferred from '../components/Deferred';
+import { fetchAllProductsCached, invalidateCatalog, imageNodes, parseSummary, MAX_MEDIA_PER_PRODUCT } from '../catalog.server';
 import {
   Page,
   Layout,
@@ -57,6 +58,11 @@ const PRODUCTS_QUERY = `#graphql
 
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
+  // Not awaited: the page renders immediately and the catalog streams in.
+  return { data: loadOptimizer(admin, session, request) };
+}
+
+async function loadOptimizer(admin, session, request) {
   const url = new URL(request.url);
   const filter = url.searchParams.get('filter') || 'all';
   const sortBy = url.searchParams.get('sortBy') || 'score_asc';
@@ -64,7 +70,7 @@ export async function loader({ request }) {
   // Plan, usage and per-shop settings drive the quota meter + auto-optimize UI.
   // They're independent of each other and of the (slow) catalog fetch, so all
   // of them run concurrently.
-  const catalogPromise = fetchAllProducts(admin, PRODUCTS_QUERY);
+  const catalogPromise = fetchAllProductsCached(admin, session.shop, PRODUCTS_QUERY);
   catalogPromise.catch(() => {}); // awaited below; avoid an unhandled rejection meanwhile
   const [plan, usage, autoOptimize] = await Promise.all([
     getBillingStateCached(admin, session.shop)
@@ -205,6 +211,7 @@ export async function action({ request }) {
 
   if (actionType === 'optimizeProduct') {
     const productId = formData.get('productId');
+    invalidateCatalog(session.shop); // the batch below changes this product's media
     try {
       const { plan } = await getBillingStateCached(admin, session.shop);
       const remainingQuota = await getRemaining(session.shop, plan);
@@ -227,11 +234,26 @@ export async function action({ request }) {
 /*  UI                                                                        */
 /* -------------------------------------------------------------------------- */
 
-export default function ProductOptimization() {
-  const {
-    products, filter: initialFilter, sortBy: initialSortBy, stats, error: loadError,
-    plan, usage, autoOptimize: initialAutoOptimize,
-  } = useLoaderData();
+const HEADER_PROPS = {
+  icon: ImageMagicIcon,
+  eyebrow: 'Image Optimizer',
+  title: 'Optimize product images',
+  subtitle: 'Convert photos to WebP and replace them on each product, keeping order and variant images',
+};
+
+export default function ProductOptimizationRoute() {
+  const { data } = useLoaderData();
+  return (
+    <Deferred resolve={data} header={<PageHeader {...HEADER_PROPS} />}>
+      {(loaded) => <ProductOptimization {...loaded} />}
+    </Deferred>
+  );
+}
+
+function ProductOptimization({
+  products, filter: initialFilter, sortBy: initialSortBy, stats, error: loadError,
+  plan, usage, autoOptimize: initialAutoOptimize,
+}) {
   const fetcher = useFetcher();
   const settingsFetcher = useFetcher();
   const revalidator = useRevalidator();
@@ -449,7 +471,7 @@ export default function ProductOptimization() {
     <Page>
       <Layout>
         <Layout.Section>
-          <PageHeader icon={ImageMagicIcon} eyebrow="Image Optimizer" title="Optimize product images" subtitle="Convert photos to WebP and replace them on each product, keeping order and variant images" />
+          <PageHeader {...HEADER_PROPS} />
         </Layout.Section>
 
         {error && (

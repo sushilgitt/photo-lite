@@ -1,9 +1,10 @@
 import PageHeader from "../components/PageHeader";
+import Deferred from "../components/Deferred";
 import { ChartVerticalIcon } from "@shopify/polaris-icons";
 import { useState, useCallback } from 'react';
 import { useLoaderData, useSubmit } from 'react-router';
 import { authenticate } from '../shopify.server';
-import { fetchAllProducts, imageNodes, MAX_MEDIA_PER_PRODUCT } from '../catalog.server';
+import { fetchAllProductsCached, imageNodes, MAX_MEDIA_PER_PRODUCT } from '../catalog.server';
 import {
   Page,
   Layout,
@@ -69,8 +70,8 @@ const PRODUCTS_QUERY = `#graphql
   }
 `;
 
-async function getAllProducts(admin) {
-  const { products } = await fetchAllProducts(admin, PRODUCTS_QUERY);
+async function getAllProducts(admin, shop) {
+  const { products } = await fetchAllProductsCached(admin, shop, PRODUCTS_QUERY);
   return products;
 }
 
@@ -228,12 +229,16 @@ function processProductsData(products, timeRange) {
 }
 
 export async function loader({ request }) {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   const timeRange = url.searchParams.get('timeRange') || '30days';
+  // Not awaited: the page renders immediately and the catalog streams in.
+  return { data: loadAnalytics(admin, session.shop, timeRange) };
+}
 
+async function loadAnalytics(admin, shop, timeRange) {
   try {
-    const products = await getAllProducts(admin);
+    const products = await getAllProducts(admin, shop);
     const { metrics, byFormat, recentActivity, topPages } = processProductsData(products, timeRange);
 
     return { 
@@ -265,7 +270,7 @@ export async function loader({ request }) {
 }
 
 export async function action({ request }) {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const actionType = formData.get('actionType');
 
@@ -273,7 +278,7 @@ export async function action({ request }) {
     const timeRange = formData.get('timeRange');
     
     try {
-      const products = await getAllProducts(admin);
+      const products = await getAllProducts(admin, session.shop);
       const { metrics, byFormat, recentActivity, topPages } = processProductsData(products, timeRange);
 
       const csvRows = [
@@ -343,15 +348,30 @@ export async function action({ request }) {
   return { success: false, error: 'Invalid action' };
 }
 
-export default function ImageOptimizationDashboard() {
-  const { 
-    metrics, 
-    byFormat, 
-    recentActivity, 
-    topPages, 
-    timeRange: initialTimeRange,
-    error: loadError 
-  } = useLoaderData();
+const HEADER_PROPS = {
+  icon: ChartVerticalIcon,
+  eyebrow: 'Analytics',
+  title: 'Optimization analytics',
+  subtitle: 'Space saved, size reduction and format breakdown',
+};
+
+export default function AnalyticsRoute() {
+  const { data } = useLoaderData();
+  return (
+    <Deferred resolve={data} header={<PageHeader {...HEADER_PROPS} />}>
+      {(loaded) => <ImageOptimizationDashboard {...loaded} />}
+    </Deferred>
+  );
+}
+
+function ImageOptimizationDashboard({
+  metrics,
+  byFormat,
+  recentActivity,
+  topPages,
+  timeRange: initialTimeRange,
+  error: loadError
+}) {
   
   const submit = useSubmit();
   const [timeRange, setTimeRange] = useState(initialTimeRange);
@@ -422,7 +442,7 @@ export default function ImageOptimizationDashboard() {
     >
       <Layout>
         <Layout.Section>
-          <PageHeader icon={ChartVerticalIcon} eyebrow="Analytics" title="Optimization analytics" subtitle="Space saved, size reduction and format breakdown" />
+          <PageHeader {...HEADER_PROPS} />
         </Layout.Section>
         {loadError && (
           <Layout.Section>

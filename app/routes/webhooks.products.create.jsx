@@ -18,6 +18,7 @@ import { getBillingState } from "../billing.server";
 import { entitled } from "../plans.server";
 import { getRemaining } from "../usage.server";
 import { optimizeBatch } from "../optimize.server";
+import { invalidateCatalog } from "../catalog.server";
 
 // Per-shop sequential task queue. Tasks chain off the previous one so products
 // created in quick succession are processed in order rather than concurrently.
@@ -65,8 +66,9 @@ export const action = async ({ request }) => {
     payload?.admin_graphql_api_id ||
     (payload?.id ? `gid://shopify/Product/${payload.id}` : null);
 
+  invalidateCatalog(shop); // the new product should show on the next page load
   if (productGid) {
-    enqueue(shop, () => runAutoOptimize(shop, productGid));
+    enqueue(shop, () => runAutoOptimize(shop, productGid).finally(() => invalidateCatalog(shop)));
   }
 
   // ACK immediately — the optimization runs in the background.

@@ -1,11 +1,12 @@
 import PageHeader from "../components/PageHeader";
+import Deferred from "../components/Deferred";
 import { GaugeIcon } from "@shopify/polaris-icons";
 import { useState, useCallback, useEffect } from 'react';
 import { useLoaderData, useSubmit, useNavigation, useActionData, redirect } from 'react-router';
 import { authenticate } from '../shopify.server';
 import { getBillingStateCached } from '../billing.server';
 import { entitled } from '../plans.server';
-import { fetchAllProducts, parseSummary } from '../catalog.server';
+import { fetchAllProductsCached, parseSummary } from '../catalog.server';
 
 // Page Speed reports are a Growth+ feature. Resolve the shop's plan and return
 // its entitlement; lets a Response (re-auth) propagate, treats any other failure
@@ -160,11 +161,14 @@ export async function loader({ request }) {
   if (!(await pageSpeedAllowed(admin, session.shop))) throw redirect('/app');
   const url = new URL(request.url);
   const selectedPage = url.searchParams.get('page') || 'all';
+  // Not awaited: the page renders immediately and the catalog streams in.
+  return { data: loadSpeedReport(admin, session.shop, selectedPage) };
+}
 
+async function loadSpeedReport(admin, shop, selectedPage) {
   try {
-    const { products } = await fetchAllProducts(admin, PRODUCTS_QUERY);
+    const { products } = await fetchAllProductsCached(admin, shop, PRODUCTS_QUERY);
 
-    const shop = session.shop;
     // Use the full myshopify domain — stripping ".myshopify.com" produced an
     // invalid host (e.g. "https://mystore") that PageSpeed could never load.
     // The myshopify URL is publicly reachable and redirects to the primary domain.
@@ -316,18 +320,33 @@ export async function action({ request }) {
   return { success: false, error: 'Invalid action type' };
 }
 
-export default function PageSpeedImpactReports() {
-  const {
-    pages,
-    insights,
-    selectedPage: initialSelectedPage,
-    totalProducts,
-    optimizedProducts,
-    totalSavedMB,
-    totalImagesOptimized,
-    avgCompression,
-    error: loadError
-  } = useLoaderData();
+const HEADER_PROPS = {
+  icon: GaugeIcon,
+  eyebrow: 'Speed Report',
+  title: 'Page speed & savings',
+  subtitle: 'Measured file-size savings per product page, plus live Google Lighthouse tests',
+};
+
+export default function PageSpeedRoute() {
+  const { data } = useLoaderData();
+  return (
+    <Deferred resolve={data} header={<PageHeader {...HEADER_PROPS} />}>
+      {(loaded) => <PageSpeedImpactReports {...loaded} />}
+    </Deferred>
+  );
+}
+
+function PageSpeedImpactReports({
+  pages,
+  insights,
+  selectedPage: initialSelectedPage,
+  totalProducts,
+  optimizedProducts,
+  totalSavedMB,
+  totalImagesOptimized,
+  avgCompression,
+  error: loadError
+}) {
 
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -427,7 +446,7 @@ export default function PageSpeedImpactReports() {
     >
       <Layout>
         <Layout.Section>
-          <PageHeader icon={GaugeIcon} eyebrow="Speed Report" title="Page speed & savings" subtitle="Measured file-size savings per product page, plus live Google Lighthouse tests" />
+          <PageHeader {...HEADER_PROPS} />
         </Layout.Section>
         {loadError && (
           <Layout.Section>

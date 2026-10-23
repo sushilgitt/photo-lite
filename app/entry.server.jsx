@@ -5,7 +5,9 @@ import { createReadableStreamFromReadable } from "@react-router/node";
 import { isbot } from "isbot";
 import { addDocumentResponseHeaders } from "./shopify.server";
 
-export const streamTimeout = 5000;
+// Pages stream the product catalog after the shell renders, and paging a large
+// catalog can take well over the template's 5s default — keep the stream open.
+export const streamTimeout = 60000;
 
 export default async function handleRequest(
   request,

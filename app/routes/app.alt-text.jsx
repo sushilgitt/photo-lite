@@ -1,4 +1,5 @@
 import PageHeader from "../components/PageHeader";
+import Deferred from "../components/Deferred";
 import { MagicIcon } from "@shopify/polaris-icons";
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useLoaderData, useSubmit, useNavigation, useActionData, useFetcher, redirect } from 'react-router';
@@ -6,7 +7,7 @@ import { authenticate } from '../shopify.server';
 import { getBillingStateCached } from '../billing.server';
 import { entitled } from '../plans.server';
 import { setDefaultResultOrder } from 'node:dns';
-import { fetchAllProducts, imageNodes, MAX_MEDIA_PER_PRODUCT } from '../catalog.server';
+import { fetchAllProductsCached, invalidateCatalog, imageNodes, MAX_MEDIA_PER_PRODUCT } from '../catalog.server';
 
 // AI alt text is a Starter+ feature. Returns whether the shop's plan includes it;
 // lets a re-auth Response propagate, treats other failures as not-entitled.
@@ -123,12 +124,16 @@ export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
   // Tier boundary: AI alt text is Starter+. Free users go back to the app home.
   if (!(await altTextAllowed(admin, session.shop))) throw redirect('/app');
+  // Not awaited: the page renders immediately and the catalog streams in.
+  return { data: loadAltTextRows(admin, session.shop) };
+}
 
+async function loadAltTextRows(admin, shop) {
   try {
     // Alt text is generated ONCE per product (from its main image) and applied
     // to ALL of that product's images, so each row here is a PRODUCT, carrying
     // every image id so a single caption can be written to all of them.
-    const { products, truncated } = await fetchAllProducts(admin, PRODUCTS_QUERY, { maxPages: MAX_PRODUCT_PAGES });
+    const { products, truncated } = await fetchAllProductsCached(admin, shop, PRODUCTS_QUERY, { maxPages: MAX_PRODUCT_PAGES });
     const rows = [];
 
     for (const product of products) {
@@ -175,6 +180,9 @@ export async function action({ request }) {
   if (actionType === 'verifyApiKey') {
     return await verifyOpenAIKey();
   }
+
+  // Applying alt text changes the files the catalog listing shows.
+  if (actionType === 'applyAltText' || actionType === 'applyBulk') invalidateCatalog(session.shop);
 
   // Apply one product's caption to ALL of its images (chunked under Shopify's
   // 250-file limit). Returns the first userError message, or null on success.
@@ -435,8 +443,23 @@ function generateSmartFallbackObject(productTitle) {
   return { altText, seoScore: calculateSeoScore(altText) };
 }
 
-export default function AltTextSuggestions() {
-  const { images: initialImages, loadError, truncated } = useLoaderData();
+const HEADER_PROPS = {
+  icon: MagicIcon,
+  eyebrow: 'Alt Text AI',
+  title: 'Write alt text with AI',
+  subtitle: "AI describes each product's main image. Review the text, then apply it to all of the product's images",
+};
+
+export default function AltTextRoute() {
+  const { data } = useLoaderData();
+  return (
+    <Deferred resolve={data} header={<PageHeader {...HEADER_PROPS} />}>
+      {(loaded) => <AltTextSuggestions {...loaded} />}
+    </Deferred>
+  );
+}
+
+function AltTextSuggestions({ images: initialImages, loadError, truncated }) {
   const actionData = useActionData();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -648,7 +671,7 @@ export default function AltTextSuggestions() {
     >
       <Layout>
         <Layout.Section>
-          <PageHeader icon={MagicIcon} eyebrow="Alt Text AI" title="Write alt text with AI" subtitle="AI describes each product's main image. Review the text, then apply it to all of the product's images" />
+          <PageHeader {...HEADER_PROPS} />
         </Layout.Section>
         {error && (
           <Layout.Section>

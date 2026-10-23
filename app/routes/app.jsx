@@ -90,6 +90,15 @@ export default function App() {
   );
 }
 
+// The layout only resolves the API key and which nav items the plan unlocks.
+// Re-running it on every page switch adds an auth + billing check to each
+// navigation for nothing; it still re-runs after actions and on full loads
+// (e.g. returning from Shopify's pricing page after a plan change).
+export function shouldRevalidate({ formMethod, currentUrl, nextUrl, defaultShouldRevalidate }) {
+  if (!formMethod && currentUrl.pathname !== nextUrl.pathname) return false;
+  return defaultShouldRevalidate;
+}
+
 export function ErrorBoundary() {
   return boundary.error(useRouteError());
 }
